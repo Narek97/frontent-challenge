@@ -37,7 +37,7 @@ export function UsersFilters({ availableCities }: UsersFiltersProps) {
         </select>
       </label>
 
-      <button type="button" className="users-filters__sort" onClick={toggleSortDirection}>
+      <button type="button" className="btn" onClick={toggleSortDirection}>
         Name {sortDirection === 'asc' ? '↑ A–Z' : '↓ Z–A'}
       </button>
     </div>

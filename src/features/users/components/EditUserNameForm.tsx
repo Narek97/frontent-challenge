@@ -55,7 +55,9 @@ export function EditUserNameForm({ userId, currentName, onSaved }: EditUserNameF
           {errors.name.message}
         </p>
       ) : null}
-      <button type="submit">Save name</button>
+      <button type="submit" className="btn">
+        Save name
+      </button>
       {justSaved ? (
         <p className="edit-user-name-form__saved" role="status">
           Saved.

@@ -24,21 +24,6 @@
   background: var(--bg);
 }
 
-.users-filters__sort {
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text-h);
-  font: inherit;
-  cursor: pointer;
-}
-
-.users-filters__sort:hover {
-  border-color: var(--accent-border);
-}
-
-.users-filters__sort:focus-visible,
 .users-filters__field input:focus-visible,
 .users-filters__field select:focus-visible {
   outline: 2px solid var(--accent);
