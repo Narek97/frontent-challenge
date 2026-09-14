@@ -1,0 +1,39 @@
+.user-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  text-align: left;
+}
+
+.user-list__item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.user-list__name {
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0 0 4px;
+}
+
+.user-list__email,
+.user-list__city {
+  margin: 0;
+  font-size: 0.9em;
+}
+
+.user-list__status {
+  padding: 24px 0;
+  text-align: center;
+}
+
+.user-list__status--error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}

@@ -1,5 +1,12 @@
+import { UserList } from './features/users/components/UserList'
+
 function App() {
-  return <div id="app" />
+  return (
+    <main>
+      <h1>Users</h1>
+      <UserList />
+    </main>
+  )
 }
 
 export default App
