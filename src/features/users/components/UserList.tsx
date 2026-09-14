@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import type { User } from '../../../types/user'
 import { useUsers } from '../api/useUsers'
 import { getAvailableCities, selectVisibleUsers } from '../lib/deriveVisibleUsers'
+import { getEffectiveUser } from '../lib/userNameEdits'
 import { useUsersViewStore } from '../store/useUsersViewStore'
 import { UsersFilters } from './UsersFilters'
 import './UserList.css'
@@ -55,8 +56,9 @@ export function UserList() {
     )
   }
 
-  const availableCities = getAvailableCities(data)
-  const visibleUsers = selectVisibleUsers(data, { search, selectedCity, sortDirection })
+  const effectiveUsers = data.map(getEffectiveUser)
+  const availableCities = getAvailableCities(effectiveUsers)
+  const visibleUsers = selectVisibleUsers(effectiveUsers, { search, selectedCity, sortDirection })
 
   return (
     <>
