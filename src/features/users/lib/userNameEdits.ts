@@ -66,6 +66,8 @@ export function saveUserNameEdit(userId: number, name: string): void {
   writeEditsRecord(edits)
 }
 
+// Conflict policy: local edit wins unconditionally over fresh server data whenever
+// one exists, regardless of how recent the server response is (see README).
 export function getEffectiveUser(user: User): User {
   const edit = getUserNameEdit(user.id)
   return edit === undefined ? user : { ...user, name: edit.name }
