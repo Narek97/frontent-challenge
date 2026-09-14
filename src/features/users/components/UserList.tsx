@@ -1,5 +1,8 @@
 import type { User } from '../../../types/user'
 import { useUsers } from '../api/useUsers'
+import { getAvailableCities, selectVisibleUsers } from '../lib/deriveVisibleUsers'
+import { useUsersViewStore } from '../store/useUsersViewStore'
+import { UsersFilters } from './UsersFilters'
 import './UserList.css'
 
 function UserListItem({ user }: { user: User }) {
@@ -14,6 +17,9 @@ function UserListItem({ user }: { user: User }) {
 
 export function UserList() {
   const { data, isPending, isError, error, refetch, isFetching } = useUsers()
+  const search = useUsersViewStore((state) => state.search)
+  const selectedCity = useUsersViewStore((state) => state.selectedCity)
+  const sortDirection = useUsersViewStore((state) => state.sortDirection)
 
   if (isPending) {
     return (
@@ -42,11 +48,23 @@ export function UserList() {
     )
   }
 
+  const availableCities = getAvailableCities(data)
+  const visibleUsers = selectVisibleUsers(data, { search, selectedCity, sortDirection })
+
   return (
-    <ul className="user-list">
-      {data.map((user) => (
-        <UserListItem key={user.id} user={user} />
-      ))}
-    </ul>
+    <>
+      <UsersFilters availableCities={availableCities} />
+      {visibleUsers.length === 0 ? (
+        <p className="user-list__status" role="status">
+          No users match your search or filters.
+        </p>
+      ) : (
+        <ul className="user-list">
+          {visibleUsers.map((user) => (
+            <UserListItem key={user.id} user={user} />
+          ))}
+        </ul>
+      )}
+    </>
   )
 }
