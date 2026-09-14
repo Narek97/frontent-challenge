@@ -1,12 +1,8 @@
-import { UserList } from './features/users/components/UserList'
+import { RouterProvider } from '@tanstack/react-router'
+import { router } from './router.ts'
 
 function App() {
-  return (
-    <main>
-      <h1>Users</h1>
-      <UserList />
-    </main>
-  )
+  return <RouterProvider router={router} />
 }
 
 export default App

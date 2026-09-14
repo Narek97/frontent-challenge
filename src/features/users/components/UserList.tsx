@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import type { User } from '../../../types/user'
 import { useUsers } from '../api/useUsers'
 import { getAvailableCities, selectVisibleUsers } from '../lib/deriveVisibleUsers'
@@ -8,9 +9,15 @@ import './UserList.css'
 function UserListItem({ user }: { user: User }) {
   return (
     <li className="user-list__item">
-      <p className="user-list__name">{user.name}</p>
-      <p className="user-list__email">{user.email}</p>
-      <p className="user-list__city">{user.address.city}</p>
+      <Link
+        className="user-list__link"
+        to="/users/$userId"
+        params={{ userId: String(user.id) }}
+      >
+        <p className="user-list__name">{user.name}</p>
+        <p className="user-list__email">{user.email}</p>
+        <p className="user-list__city">{user.address.city}</p>
+      </Link>
     </li>
   )
 }
