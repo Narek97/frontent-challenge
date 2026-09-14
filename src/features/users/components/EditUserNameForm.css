@@ -28,23 +28,9 @@
   outline-offset: 2px;
 }
 
-.edit-user-name-form button {
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text-h);
-  font: inherit;
-  cursor: pointer;
-}
-
-.edit-user-name-form button:hover {
-  border-color: var(--accent-border);
-}
-
-.edit-user-name-form button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.edit-user-name-form__field input[aria-invalid='true'] {
+  border-color: var(--text-h);
+  border-width: 2px;
 }
 
 .edit-user-name-form__error {

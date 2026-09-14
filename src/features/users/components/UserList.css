@@ -12,6 +12,7 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px;
+  min-width: 0;
 }
 
 .user-list__link {
@@ -34,12 +35,14 @@
   font-weight: 600;
   color: var(--text-h);
   margin: 0 0 4px;
+  overflow-wrap: break-word;
 }
 
 .user-list__email,
 .user-list__city {
   margin: 0;
   font-size: 0.9em;
+  overflow-wrap: break-word;
 }
 
 .user-list__status {

@@ -41,7 +41,7 @@ export function UserList() {
     return (
       <div className="user-list__status user-list__status--error" role="alert">
         <p>Something went wrong while loading users: {error.message}</p>
-        <button type="button" onClick={() => refetch()} disabled={isFetching}>
+        <button type="button" className="btn" onClick={() => refetch()} disabled={isFetching}>
           {isFetching ? 'Retrying…' : 'Retry'}
         </button>
       </div>

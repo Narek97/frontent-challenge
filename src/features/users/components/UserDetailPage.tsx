@@ -23,7 +23,7 @@ export function UserDetailPage() {
     return (
       <div className="user-detail__status user-detail__status--error" role="alert">
         <p>Something went wrong while loading users: {error.message}</p>
-        <button type="button" onClick={() => refetch()} disabled={isFetching}>
+        <button type="button" className="btn" onClick={() => refetch()} disabled={isFetching}>
           {isFetching ? 'Retrying…' : 'Retry'}
         </button>
       </div>
@@ -50,7 +50,7 @@ export function UserDetailPage() {
   return (
     <>
       <h1>{displayName}</h1>
-      <dl>
+      <dl className="user-detail__info">
         <dt>Email</dt>
         <dd>{user.email}</dd>
         <dt>City</dt>
