@@ -1,4 +1,5 @@
 import type { User } from '../types/user'
+import { delay, expandUsers, getSimulationParams, simulatedNetworkFailure } from './devNetworkSimulation'
 
 const USERS_ENDPOINT = 'https://jsonplaceholder.typicode.com/users'
 
@@ -20,6 +21,18 @@ function isUser(value: unknown): value is User {
 }
 
 export async function fetchUsers(): Promise<User[]> {
+  if (import.meta.env.DEV) {
+    const { delayMs, shouldFail } = getSimulationParams()
+
+    if (delayMs) {
+      await delay(delayMs)
+    }
+
+    if (shouldFail) {
+      throw simulatedNetworkFailure()
+    }
+  }
+
   const response = await fetch(USERS_ENDPOINT)
 
   if (!response.ok) {
@@ -30,6 +43,14 @@ export async function fetchUsers(): Promise<User[]> {
 
   if (!Array.isArray(data) || !data.every(isUser)) {
     throw new Error('Received an unexpected response shape from the users endpoint')
+  }
+
+  if (import.meta.env.DEV) {
+    const { userCount } = getSimulationParams()
+
+    if (userCount && userCount > data.length) {
+      return expandUsers(data, userCount)
+    }
   }
 
   return data
