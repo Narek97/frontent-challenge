@@ -3,9 +3,10 @@
 A user management screen built with React and TypeScript against the
 JSONPlaceholder fixture API: a searchable, sortable, filterable user list; a
 per-user detail view; and an inline name edit that persists across a reload.
-The stack is TanStack Query (server state), TanStack Router (navigation),
-Zustand (view state), React Hook Form (the one form), and `localStorage`
-(local edits) — chosen to keep each concern owned by exactly one thing, not
+The stack is TanStack Query (server state), TanStack Router (navigation and
+URL-owned list-view state), React Hook Form (the one form), `localStorage`
+(local edits), and Tailwind CSS + shadcn/ui (styling and accessible UI
+primitives) — chosen to keep each concern owned by exactly one thing, not
 to maximize the dependency count.
 
 ## Level Applying For
@@ -20,11 +21,11 @@ Senior Frontend Engineer / Senior React + TypeScript Engineer
 | **TypeScript, `strict: true`** | Enabled in `tsconfig.app.json`; no `any` anywhere in the codebase — catches boundary and null-safety mistakes at compile time. |
 | **Vite** | Dev server and production build; also powers Vitest's transform pipeline, so there's one toolchain, not two. |
 | **TanStack Query** | Owns fetching, caching, and loading/error state for the users list — no hand-rolled fetch/loading-state logic, and its query-identity guarantees are what keep the app safe from stale/out-of-order responses (see Networking). |
-| **TanStack Router** | Owns navigation and the selected-user id via the URL (`/users`, `/users/:id`), so back/forward and direct links work through the browser's own history, not a hand-rolled one. |
-| **Zustand** | Owns UI/view state only — search term, city filter, sort direction. A tiny, dependency-free store was enough; a bigger state library would be solving a problem this app doesn't have. |
+| **TanStack Router** | Owns navigation and the selected-user id via the URL (`/users`, `/users/:id`), and owns list-view state — search term, city filter, sort direction — as typed search params on `/users` (`?search=&city=&sort=`), so back/forward, refresh, and direct links all work through the browser's own history, not a separate client store. |
 | **React Hook Form** | Owns the one form in the app (editing a user's name) — field state and validation without re-render-on-every-keystroke overhead. |
 | **`localStorage`** | The only persistence mechanism available without a backend; stores local name edits only, never the whole dataset. |
-| **Plain, component-scoped CSS** | No Tailwind or shadcn/ui are installed in this project — responsive/accessibility work (semantic markup, focus states, overflow handling, a small shared `.btn` class) was done with hand-written CSS files per component plus shared tokens in `src/index.css`. |
+| **Tailwind CSS** | Utility-first styling for layout, spacing, typography, color, and responsive behavior — used directly in components rather than maintaining separate CSS files per component. |
+| **shadcn/ui** | An accessible component *foundation*, not a design system: Button, Input, Label, Select, Table, Card, Alert, Separator, and Skeleton are copied into `src/components/ui/` (the shadcn convention — code you own and can edit, not an installed package) and composed with Tailwind classes specific to this app. Chosen over hand-rolled primitives because Select/Table/Alert need real keyboard, focus, and ARIA behavior that's easy to get subtly wrong by hand. |
 | **Vitest + jsdom** | Test runner and DOM environment for the unit suite — reuses Vite's config instead of a separate Jest setup. |
 
 ## Getting Started
@@ -75,14 +76,15 @@ port — the URL above is always accurate when the command succeeds.
 | Slow network demonstration | ✅ Done, dev-only | `?slow=3000` query param (see Development Network Simulation). |
 | Failed request demonstration | ✅ Done, dev-only + real path | `?fail=1` simulates it deterministically; the real error path also fires on any genuine fetch failure. |
 | Many-rows demonstration | ✅ Done, dev-only | `?many=500` expands the fixture data client-side. |
+| Pagination | ✅ Done | 20 users per page, client-side; page number is a URL search param (see URL State). |
 | Stale/out-of-order response handling | ✅ Handled by architecture, no custom code | See Networking and Race Conditions — deliberately not hand-rolled. |
 | Back/forward navigation | ✅ Done | TanStack Router's own history integration. |
 | Responsive layout | ✅ Implemented at the code level | Fluid grid, side gutter, no fixed widths that break narrow screens. Live multi-device verification not completed — see Responsive / Accessibility Verification. |
 | Accessibility | ✅ Implemented at the code level | Semantic HTML, labels, focus-visible states, ARIA roles. No automated audit tool or screen-reader pass performed — see below. |
 | TypeScript strict mode | ✅ Done | `tsconfig.app.json`, `"strict": true`; `npx tsc -b` passes with zero `any`. |
-| Tests | ✅ Done, scoped | 3 files, 29 unit tests (Vitest). No component or E2E suite. |
+| Tests | ✅ Done, scoped | 3 files, 36 unit tests (Vitest). No component or E2E suite. |
 | `AI/context.md` | ✅ Done | Committed, describes the actual current implementation. |
-| Incremental git history | ✅ Done | 15 commits as of this writing, each scoped to one implementation step (see Git History). |
+| Incremental git history | ✅ Done | Many commits, each scoped to one implementation step, not a single "initial commit" (see Git History). |
 
 ## Architecture
 
@@ -91,13 +93,32 @@ State is split by *kind*, with exactly one owner per kind:
 | State | Owner | Notes |
 |---|---|---|
 | Server users | **TanStack Query** | `queryKey: ['users']`, one query function, cached and never mutated in place. |
-| Search term, city filter, sort direction | **Zustand** | View-only state; nothing else lives here. |
+| Search term, city filter, sort direction | **TanStack Router (URL search params)** | Typed, validated search params on `/users` (`?search=&city=&sort=`) — see [URL State](#url-state) below. |
 | URL / navigation, selected user | **TanStack Router** | Route params (`/users/:id`) are the single source of truth for "which user is open." |
 | Local name edits | **`localStorage`** | Keyed by user id, `{ name, editedAt }`. |
 | Edit form state | **React Hook Form** | Local to the one form component; not lifted anywhere. |
 | Visible users (what's actually rendered) | **Derived, not stored** | `deriveVisibleUsers.ts` computes the list from (server users → local edits applied → search/filter/sort applied) fresh on every render. |
 
-**Why server data is not in Zustand**: putting the users array in Zustand would create a second cache alongside TanStack Query's, with no automatic way to keep them in sync — every fetch, retry, and background refetch would need to manually write into both places, and any place that read from the "wrong" one would silently show stale data. Keeping server state in exactly one place (the Query cache) means there is only ever one truthful answer to "what did the server return," and Zustand is free to hold only what it's actually good at: transient, client-only UI preferences.
+**Why server data is not in a client store**: caching the users array outside TanStack Query would create a second cache alongside its own, with no automatic way to keep them in sync — every fetch, retry, and background refetch would need to manually write into both places, and any place that read from the "wrong" one would silently show stale data. Keeping server state in exactly one place (the Query cache) means there is only ever one truthful answer to "what did the server return."
+
+### URL State
+
+Search term, city filter, sort direction, and the current page live entirely in the `/users` route's search params, validated by `validateUsersSearch` in `src/router.ts`. All of it is read and written through one hook, `useUsersListFilters` (`src/features/users/lib/useUsersListFilters.ts`), so both `UserList.tsx` and `UsersFilters.tsx` share a single implementation of the defaulting/update logic instead of each re-deriving it.
+
+- Reading: `usersListRoute.useSearch()` (wrapped by the hook) applies a default locally for whichever field is absent (`search` → `''`, `city` → `ALL_CITIES`, `sort` → `'asc'`, `page` → `1`) — this is what keeps `/users` clean, since a value equal to its default is simply omitted from the URL.
+- Writing: `usersListRoute.useNavigate()` with `search: (prev) => ({ ...prev, ... })` and `replace: true` — every search/filter/sort/page change replaces the current history entry rather than pushing a new one, so typing in the search box or flipping pages doesn't spam browser history. Navigating to a detail page (a real push) and pressing Back still restores whatever `/users?...` URL was current beforehand.
+- Changing `search`, `city`, or `sort` resets `page` back to 1 (via the same `navigate()` call) — the result set has changed, so a previously-valid page number no longer means anything.
+- Safety: `validateUsersSearch` never throws — any missing, malformed, or hand-edited value (wrong type, unexpected `sort`, non-integer or out-of-range `page`) is silently dropped rather than surfaced, and callers fall back to the same defaults as a clean `/users`. `UserList.tsx` additionally clamps the page it renders to `[1, totalPages]`, so a stale/hand-edited `?page=` that's now out of range (e.g. after a filter shrinks the result set) never renders a blank page.
+- The result: refresh, direct links, and shared URLs (e.g. `/users?search=anna&city=Gwenborough&sort=asc&page=2`) all reproduce the same list view; there is no separate client store for this state.
+
+### List Layout & Pagination
+
+With `?many=` producing hundreds of rows, letting the whole page scroll would push the filters and search bar out of view exactly when they're most useful. Instead:
+
+- `RootLayout.tsx` fixes the app shell to `h-svh` (bounded, not growing with content) and gives the routed page a single flexible region to fill.
+- `UserListPage.tsx` / `UserList.tsx` split that region into three parts: the heading, filter toolbar, and result count are `shrink-0` (always visible, never scroll away); the table sits in its own `overflow-y-auto` region in between; and the pagination control is `shrink-0` at the bottom (also always visible). The table's own header row is additionally `sticky` within that scrolling region, so column headers stay visible while scrolling through a page of rows.
+- **Pagination**: 20 users per page (`USERS_PAGE_SIZE` in `deriveVisibleUsers.ts`), computed client-side over the already-filtered/sorted array (`getTotalPages`/`paginateUsers`, both unit-tested). This was chosen over virtualization as the scale strategy — simpler to implement correctly and to reason about for a fixture-sized dataset, at the cost of still holding the full filtered array in memory (fine at `?many=` scale; a real large dataset would want server-side pagination instead — see What I'd Need For Real).
+- Previous/Next controls disable at the first/last page rather than hiding, and the page indicator (`Page X of Y`) is `aria-live="polite"` so a screen reader announces the change.
 
 ## Data and Persistence
 
@@ -115,7 +136,7 @@ There is exactly one network call in the app: `GET https://jsonplaceholder.typic
 
 **Search, sort, and city filtering are entirely client-side** — they transform the already-fetched array in memory (`deriveVisibleUsers.ts`) and never trigger a new request. Because of that, **there is no custom debounce, request-id, or `AbortController` implementation for typing** — there is no per-keystroke fetch for such logic to guard.
 
-For the one fetch that does exist, correctness against stale/out-of-order results is TanStack Query's job, not this app's: it deduplicates concurrent fetches for the same query key and only ever commits the result of the most recently valid fetch to its cache, discarding anything superseded. This is a documented library guarantee, not something re-implemented or independently verified by this project's own tests — the claim here is "the architecture doesn't need to solve this problem itself," not "we've proven the library's internals." If search or filtering ever became server-side, that would change, and race-handling code would need to be added at that point.
+For the one fetch that does exist, correctness against stale/out-of-order results is TanStack Query's job, not this app's: request deduplication and cache-consistency for a given query key are core, widely-relied-upon, documented behaviors of the library. This project does not re-implement that logic and has not independently audited Query's internals to verify it — the claim here is "the architecture doesn't need to solve this problem itself because nothing here re-fetches per keystroke," not "we've proven the library's internals." If search or filtering ever became server-side, that would change, and race-handling code would need to be added at that point.
 
 ## Development Network Simulation
 
@@ -135,12 +156,13 @@ Properties worth knowing:
 To be precise about what was actually verified, versus implemented but unverified in a live environment:
 
 **Code-level checks performed:**
-- Every interactive element is a native `<button>`, `<a>` (via `Link`), `<input>`, `<select>`, or `<label>` — no click handlers on non-interactive elements.
-- `:focus-visible` styles are defined for every interactive element, including the detail page's back link and both retry buttons.
+- Every interactive element is a native `<button>`, `<a>` (via `Link`), `<input>`, or a Radix-based `<Select>` — no click handlers on non-interactive elements. The table's row-wide click is a mouse convenience layered on top of a real `<Link>` in the name cell, not a replacement for it — keyboard users tab to that link directly.
+- `:focus-visible` rings are defined via shadcn's shared `--ring` token, applied consistently across buttons, inputs, and the select trigger.
+- Radix UI (via shadcn's `Select`) provides its own keyboard interaction (arrow keys, typeahead, `Escape` to close), focus management, and ARIA roles/attributes out of the box — not re-implemented by this project.
 - `role="status"` for loading/empty states, `role="alert"` for errors and validation messages.
-- Invalid form input gets a visible border change, not just adjacent text.
-- `overflow-wrap: break-word` (plus `min-width: 0` on the containing flex/grid items) is applied to name/email/city text, checked by reasoning through the CSS cascade against long values (including the `?many=` synthetic dataset's longer names/emails).
-- A fluid CSS grid (`auto-fill`/`minmax`) with a single breakpoint reflows from desktop to narrow widths without fixed pixel widths that would break small screens.
+- Invalid form input gets a visible border/ring change via `aria-invalid`, not just adjacent text.
+- Long name/email/city/company values wrap rather than overflow (checked against the `?many=` synthetic dataset's longer values); the table's outer container scrolls horizontally as a fallback on very narrow screens instead of ever forcing the page itself to scroll.
+- The list progressively hides lower-priority columns (Company, then Phone) below `lg`/`md` breakpoints via Tailwind's responsive `hidden`/`table-cell` utilities, keeping Name and City visible at every width.
 
 **Build/static validation performed:**
 - `npx tsc -b`, `pnpm lint`, and `pnpm build` all pass with these styles and markup in place.
@@ -152,7 +174,7 @@ To be precise about what was actually verified, versus implemented but unverifie
 
 **Stack**: Vitest + jsdom (`vite.config.ts`'s `test: { environment: 'jsdom' }`; `pnpm test` → `vitest run`).
 
-**Current result**: 3 test files, 29 tests, all passing (verified by running `pnpm test`).
+**Current result**: 3 test files, 36 tests, all passing (verified by running `pnpm test`).
 
 **What is tested:**
 - `deriveVisibleUsers.test.ts` — search by name/email (case-insensitive, whitespace-trimmed), city filtering, ascending/descending sort, combined search+filter+sort, and that the input array is never mutated.
@@ -169,13 +191,13 @@ No coverage percentage is claimed anywhere in this document — no coverage tool
 
 ## AI Usage
 
-This project explicitly allows AI tools, and AI (Claude Code) was used throughout — for architecture and planning, implementation, code review, test generation, and this documentation. It was not autonomous: every step was scoped, reviewed, and explicitly approved before moving to the next, following two committed guardrail documents (`CLAUDE.md` and `AI/context.md`) that encode the project's conventions, state-ownership rules, and things never to do silently (e.g. change the conflict policy, put server data in Zustand, weaken TypeScript strictness).
+This project explicitly allows AI tools, and AI (Claude Code) was used throughout — for architecture and planning, implementation, code review, test generation, and this documentation. It was not autonomous: every step was scoped, reviewed, and explicitly approved before moving to the next, following two committed guardrail documents (`CLAUDE.md` and `AI/context.md`) that encode the project's conventions, state-ownership rules, and things never to do silently (e.g. change the conflict policy, put server data outside TanStack Query's cache, weaken TypeScript strictness).
 
 Concretely: each implementation step was validated with `npx tsc -b`, `pnpm lint`, `pnpm test`, and `pnpm build` before being considered done; at least one review pass caught and fixed a real defect before it was committed (an unnecessary forced-re-render pattern in the name-edit flow, replaced with real state). All git commits and the eventual push were, and remain, performed by the human developer — the assistant never ran `git commit` or `git push`.
 
 ## Git History
 
-The repository has 15 commits as of this writing, starting from an initial scaffold commit through incremental, single-purpose commits for each implementation step (routing, search/sort/filter, name editing and persistence, the conflict-policy decision, development network simulation, the responsive/accessibility pass, the test suite, and this documentation). No commit hashes are quoted here since they're not meaningful outside the actual repository — `git log --oneline` in the repo shows the real history and commit messages, which correspond to their diffs rather than being a single undifferentiated "initial commit."
+The repository was built as a sequence of incremental, single-purpose commits — an initial scaffold, then one commit per implementation step (routing, search/sort/filter, name editing and persistence, the conflict-policy decision, development network simulation, the responsive/accessibility pass, the test suite, the Tailwind/shadcn migration, and this documentation) — not a single undifferentiated "initial commit." No specific commit count or hashes are quoted here, since that number changes with every commit and would go stale immediately; `git log --oneline` in the repository is the actual, current source of truth.
 
 ## Challenge Ambiguities / Decisions
 
@@ -203,14 +225,14 @@ The brief states outright that it contains gaps and contradictions and asks for 
 
 ## What Is Still Wrong With This
 
-- **View state does not survive a reload — only the name edit does.** Search term, city filter, and sort direction live in Zustand with no persistence and no URL sync; reloading the page resets them to defaults even though the edited name survives. This is a real, unresolved tension with "nothing a user has done should disappear because they reloaded the page," read broadly.
 - **No conflict UI.** When local-edit-wins suppresses a fresh server value, the user has no way to know that happened — there's no indicator, no way to see or accept the server's version.
 - **Local-edit-wins can preserve stale local data indefinitely.** If the real server value ever changed for a user whose name was locally edited, this app would never show that change, forever, with no expiry or reconciliation mechanism.
 - **Only the user's name is editable** — no other field has an edit path, by design, but worth naming as a real limitation of the feature surface.
 - **No component-level, end-to-end, or visual regression tests** — the suite covers pure logic only; a UI regression (a state wired to the wrong prop, a broken render branch) would not be caught by anything currently in the repo.
 - **The development network simulation is intentionally simplistic.** It's three URL query parameters read at fetch time — there's no UI toggle, no randomized/variable latency, and the `?slow=` delay itself isn't covered by an automated test (it would need fake timers, which wasn't judged worth the complexity for this scope).
 - **No automated accessibility testing.** No axe/Lighthouse run, no screen-reader pass — see Responsive / Accessibility Verification for the exact boundary between what was and wasn't checked.
-- **`CLAUDE.md`'s approved technology list still names Tailwind and shadcn/ui**, which were never actually installed — the real implementation uses plain CSS. This is a documentation/reality drift worth reconciling, not a functional bug.
+- **The production JS bundle grew substantially after adopting Tailwind + shadcn/ui/Radix** (verified via `pnpm build`: roughly 371 KB → 532 KB minified, before gzip). Vite's build now warns about a chunk over its 500 KB default threshold. No code-splitting was added to address this — reasonable for a single-screen challenge app, but a real red flag at production scale.
+- **No component-level UI test suite was added for the shadcn migration** — the existing unit tests (pure functions) still pass unchanged, but nothing automatically verifies the new Table/Select/Alert markup renders or behaves correctly; that was checked by code review only, not a live browser session (see below).
 
 ## What I Would Need Before Building This For Real
 
@@ -219,7 +241,7 @@ The brief states outright that it contains gaps and contradictions and asks for 
 - Real, server-side persistence for edits, replacing `localStorage` entirely.
 - Server-side validation of the name field (length limits, allowed characters, uniqueness rules if any) — client-side "not empty" isn't a real contract.
 - A decision, with the product owner, on the actual conflict/versioning policy — e.g. optimistic concurrency with a version/ETag, last-write-wins with a server timestamp, or a UI that surfaces the conflict to the user — rather than the unconditional local-wins simplification used here.
-- A pagination/search/filter strategy for real data volumes — client-side filtering over an in-memory array does not scale past a fixture-sized dataset, and at that point the race-condition handling this README says isn't needed today would become necessary.
+- A server-side pagination/search/filter strategy for real data volumes — this app paginates client-side over an in-memory array (see List Layout & Pagination), which holds up at `?many=` scale but not past it; a real dataset would need the API itself to accept `page`/`search`/`sort` params, and at that point the race-condition handling this README says isn't needed today would become necessary.
 - Observability and error reporting (e.g. Sentry or equivalent) so failures are visible in production, not just handled locally.
 - Automated end-to-end tests (Playwright) covering the full list → detail → edit → reload journey.
 - Real accessibility testing: automated audits in CI plus a manual screen-reader pass, not just code-level review.
@@ -233,16 +255,24 @@ Per the challenge brief, intentionally not implemented:
 - Authentication.
 - Real persistence beyond the browser (`localStorage` is the ceiling).
 - Routing to anything beyond what this one screen needs.
-- A design system.
+- A design system. shadcn/ui is used narrowly as an accessible component
+  *foundation* — nine primitives (Button, Input, Label, Select, Table, Card,
+  Alert, Separator, Skeleton), each pulled in because a real interaction in
+  this app needed it, composed with Tailwind classes specific to this screen.
+  There is no custom token/theming architecture beyond the color variables
+  already in `src/index.css`, no component catalog beyond what's listed above,
+  and no shared design documentation — the line the brief draws around "a
+  design system" was deliberately not crossed.
 
 ## Known Trade-offs
 
 - **Local-edit-wins simplicity vs. freshness/conflict resolution** — chosen for predictability and to satisfy the reload-survival requirement unambiguously, at the cost of never reconciling with a changed server value.
-- **Client-side filtering vs. scalability** — correct and simple at fixture scale (even the `?many=500` demo dataset), but would need to move server-side for real data volumes.
-- **Minimal architecture vs. overengineering** — one query key, one Zustand store, two routes; deliberately not building abstractions (a generic data table, a design-system layer, a request-management framework) that nothing in this app's actual requirements justifies yet.
+- **Client-side filtering/pagination vs. scalability** — correct and simple at fixture scale (even the `?many=500` demo dataset, paginated 20 rows at a time), but would need to move server-side for real data volumes, since the full filtered array is still held in memory.
+- **Minimal architecture vs. overengineering** — one query key, one URL-owned view-state schema, two routes, no client state library; deliberately not building abstractions (a generic data table, a design-system layer, a request-management framework) that nothing in this app's actual requirements justifies yet.
 - **`localStorage` vs. backend persistence** — the only option under "no backend," accepted with its real limitations (per-browser, non-durable, no cross-device sync) stated plainly rather than glossed over.
 - **Limited test scope vs. a time-boxed challenge** — unit tests on the highest-value pure logic, deliberately not a full component/E2E suite, in line with the brief's own "a real test over a token one" framing.
 - **Development network simulation vs. real network control** — URL query parameters are simple, deterministic, and easy to demonstrate, at the cost of not modeling real-world variability (jitter, partial failures, flaky connections).
+- **Tailwind + shadcn/ui vs. hand-rolled CSS** — adopted for genuinely correct keyboard/focus/ARIA behavior in `Select`/`Table`/`Alert` and faster, more consistent styling, at the cost of a measured increase in JS bundle size (see What Is Still Wrong With This) and a larger `node_modules` footprint than a plain-CSS approach would have had.
 
 ## Final Notes
 

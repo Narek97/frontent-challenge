@@ -8,7 +8,9 @@ const user: User = {
   id: 1,
   name: 'Server Name',
   email: 'user@example.com',
+  phone: '555-0100',
   address: { city: 'Serverville' },
+  company: { name: 'Acme Co' },
 }
 
 beforeEach(() => {

@@ -5,7 +5,9 @@ const validUser = {
   id: 1,
   name: 'Leanne Graham',
   email: 'Sincere@april.biz',
+  phone: '1-770-736-8031 x56442',
   address: { city: 'Gwenborough' },
+  company: { name: 'Romaguera-Crona' },
 }
 
 function mockFetchResponse(body: unknown, init: { ok?: boolean; status?: number; statusText?: string } = {}) {

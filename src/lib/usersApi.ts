@@ -14,9 +14,13 @@ function isUser(value: unknown): value is User {
     typeof candidate.id === 'number' &&
     typeof candidate.name === 'string' &&
     typeof candidate.email === 'string' &&
+    typeof candidate.phone === 'string' &&
     typeof candidate.address === 'object' &&
     candidate.address !== null &&
-    typeof (candidate.address as Record<string, unknown>).city === 'string'
+    typeof (candidate.address as Record<string, unknown>).city === 'string' &&
+    typeof candidate.company === 'object' &&
+    candidate.company !== null &&
+    typeof (candidate.company as Record<string, unknown>).name === 'string'
   )
 }
 

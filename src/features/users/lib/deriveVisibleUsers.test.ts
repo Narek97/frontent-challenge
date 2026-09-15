@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { User } from '../../../types/user'
-import { ALL_CITIES } from '../store/useUsersViewStore'
-import { getAvailableCities, selectVisibleUsers } from './deriveVisibleUsers'
+import { ALL_CITIES, getAvailableCities, getTotalPages, paginateUsers, selectVisibleUsers } from './deriveVisibleUsers'
 
 function makeUser(overrides: Partial<User>): User {
   return {
     id: 1,
     name: 'Default Name',
     email: 'default@example.com',
+    phone: '555-0100',
     address: { city: 'Defaultville' },
+    company: { name: 'Default Co' },
     ...overrides,
   }
 }
@@ -102,5 +103,44 @@ describe('getAvailableCities', () => {
 
   it('returns an empty array for an empty input', () => {
     expect(getAvailableCities([])).toEqual([])
+  })
+})
+
+describe('getTotalPages', () => {
+  it('divides evenly when the item count is a multiple of the page size', () => {
+    expect(getTotalPages(40, 20)).toBe(2)
+  })
+
+  it('rounds up a partial final page', () => {
+    expect(getTotalPages(41, 20)).toBe(3)
+  })
+
+  it('is always at least 1, even for zero items', () => {
+    expect(getTotalPages(0, 20)).toBe(1)
+  })
+})
+
+describe('paginateUsers', () => {
+  const many = Array.from({ length: 45 }, (_, index) => makeUser({ id: index + 1 }))
+
+  it('returns a full page from the start', () => {
+    const result = paginateUsers(many, 1, 20)
+    expect(result).toHaveLength(20)
+    expect(result[0].id).toBe(1)
+    expect(result[19].id).toBe(20)
+  })
+
+  it('returns the correct slice for a middle page', () => {
+    const result = paginateUsers(many, 2, 20)
+    expect(result.map((u) => u.id)).toEqual(Array.from({ length: 20 }, (_, i) => 21 + i))
+  })
+
+  it('returns a partial final page', () => {
+    const result = paginateUsers(many, 3, 20)
+    expect(result.map((u) => u.id)).toEqual([41, 42, 43, 44, 45])
+  })
+
+  it('returns an empty array for a page past the end', () => {
+    expect(paginateUsers(many, 4, 20)).toEqual([])
   })
 })

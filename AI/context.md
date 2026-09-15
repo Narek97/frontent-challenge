@@ -28,46 +28,54 @@ own sake.
   Vitest (see Testing).
 - **TanStack Query** — owns all server state (the users list). One query key,
   one query function.
-- **TanStack Router** — owns navigation: which route is active, and which user
-  id is selected, via URL params.
-- **Zustand** — owns UI/view state only (search term, city filter, sort
-  direction).
+- **TanStack Router** — owns navigation (which route is active, which user id
+  is selected via URL params) and owns list-view state (search term, city
+  filter, sort direction) via typed search params on `/users`.
 - **React Hook Form** — owns the one form in the app (editing a user's name).
 - **`localStorage`** — the persistence layer for local name edits (nothing
   else is persisted).
-- **Plain, component-scoped CSS** — no Tailwind/shadcn are installed despite
-  being named in `CLAUDE.md`'s approved-stack list; the actual responsive/
-  accessibility pass (Step 10) was implemented with hand-written CSS files
-  per component plus a small shared `.btn` class in `src/index.css`. Treat
-  `CLAUDE.md`'s stack list as a ceiling of what's *allowed*, not a description
-  of what's *installed* — always check `package.json` for ground truth.
+- **Tailwind CSS + shadcn/ui** — installed and in use. Tailwind utility classes
+  are used directly in components; there are no more per-component CSS files.
+  shadcn/ui primitives (Button, Input, Label, Select, Table, Card, Alert,
+  Separator, Skeleton) live in `src/components/ui/` — copied source per the
+  shadcn convention, not an installed package — used as an accessible
+  component *foundation*, not a design system: no custom token/theming layer
+  beyond the color variables in `src/index.css`, no component catalog beyond
+  what's actually used. Toasts use `sonner` (shadcn's current recommendation)
+  via `src/components/ui/sonner.tsx`.
 - **Vitest + jsdom** — the test runner, added in Step 11.
 
 Actual repo structure (don't invent directories beyond this):
 
 ```
 src/
-├── App.tsx                    RouterProvider wiring
-├── RootLayout.tsx             root route's <Outlet /> shell
+├── App.tsx                    RouterProvider + <Toaster />
+├── RootLayout.tsx             root route's <Outlet /> shell + ThemeToggle
+├── ThemeToggle.tsx            light/dark toggle button
 ├── router.ts                  route tree: '/', '/users', '/users/$userId'
 ├── main.tsx                   React root, QueryClientProvider
-├── index.css                  CSS variables, dark-mode tokens, shared .btn
+├── index.css                  Tailwind import + shadcn CSS variables ([data-theme])
 ├── types/
 │   └── user.ts                the `User` domain type
 ├── lib/
 │   ├── usersApi.ts            fetchUsers() — the one fetch() call in the app
 │   ├── usersApi.test.ts
 │   ├── queryClient.ts         new QueryClient(), no custom options
+│   ├── useTheme.ts            light/dark theme state, persisted to localStorage
+│   ├── utils.ts                shadcn's `cn()` class-merging helper
 │   └── devNetworkSimulation.ts  dev-only slow/fail/many simulation helpers
+├── components/ui/             shadcn/ui primitives only (button, input, label,
+│                               select, table, card, alert, separator, skeleton,
+│                               sonner) — not app-specific components
 └── features/users/
     ├── api/useUsers.ts        the one useQuery() call, queryKey: ['users']
-    ├── store/useUsersViewStore.ts   Zustand: search/selectedCity/sortDirection
     ├── lib/
-    │   ├── deriveVisibleUsers.ts    pure search+filter+sort, deriveVisibleUsers.test.ts
+    │   ├── deriveVisibleUsers.ts    pure search+filter+sort+paginate, deriveVisibleUsers.test.ts
+    │   ├── useUsersListFilters.ts   shared hook: reads/writes search/city/sort/page on the URL
     │   └── userNameEdits.ts         localStorage read/write + getEffectiveUser, .test.ts
     └── components/
-        ├── UserListPage.tsx, UserList.tsx (+.css), UsersFilters.tsx (+.css)
-        ├── UserDetailPage.tsx (+.css), EditUserNameForm.tsx (+.css)
+        ├── UserListPage.tsx, UserList.tsx, UsersFilters.tsx
+        ├── UserDetailPage.tsx, EditUserNameForm.tsx
 ```
 
 `AI/context.md` (this file) lives at the repo root under `AI/`, alongside
@@ -79,10 +87,22 @@ This is the single most important thing to internalize before editing anything:
 
 - **TanStack Query → server state.** The users array as fetched from the API.
   Lives in the Query cache under `queryKey: ['users']`. Never mutated in place.
-- **Zustand → UI/view state only.** `search`, `selectedCity`, `sortDirection`.
-  Nothing else.
-- **TanStack Router → URL/navigation state.** Which route is active (list vs.
-  detail) and which user id is selected (`/users/$userId`'s `userId` param).
+- **TanStack Router → URL/navigation state, and list-view state.** Which route
+  is active (list vs. detail), which user id is selected (`/users/$userId`'s
+  `userId` param), and `search`/`city`/`sort`/`page` as typed search params on
+  the `/users` route (`validateSearch` in `src/router.ts`). All fields are
+  optional so defaults never appear in the URL; the shared
+  `useUsersListFilters()` hook (`features/users/lib/useUsersListFilters.ts`)
+  is the only place that reads them via `usersListRoute.useSearch()`, applying
+  a local default (`''`, `ALL_CITIES`, `'asc'`, `1`) for whichever are absent
+  — both `UserList.tsx` and `UsersFilters.tsx` consume this hook rather than
+  each re-deriving the defaulting logic. Updates go through the hook's
+  `updateSearch`/`updateCity`/`updateSort`/`setPage`, all calling
+  `usersListRoute.useNavigate()` with `replace: true`, so typing in the search
+  box, changing a filter/sort, or flipping pages never creates a new history
+  entry — only navigating to a detail page (and back) does. Changing
+  search/city/sort also resets `page` to 1, since the result set (and
+  therefore what "page 2" means) has changed.
 - **`localStorage` → persisted local name edits.** Keyed by user id, holding
   `{ name, editedAt }`. Nothing else is persisted.
 - **React Hook Form → the edit form's own field/validation state.** Local to
@@ -94,10 +114,14 @@ This is the single most important thing to internalize before editing anything:
 
 Explicit rules, already enforced in the current code and in `CLAUDE.md`:
 
-- **DO NOT** put users/server data into Zustand.
-- **DO NOT** store `selectedUserId` in Zustand — it lives only in the router.
+- **DO NOT** reintroduce a client state library (Zustand, Redux, etc.) for
+  view state — the URL already owns `search`/`city`/`sort`, and there is
+  nothing else left that needs one.
+- **DO NOT** store `selectedUserId` anywhere but the route path — it lives
+  only in the router.
 - **DO NOT** use the browser History API directly (`window.history`,
-  `window.location`) for navigation — TanStack Router owns this.
+  `window.location`) for navigation — TanStack Router owns this, including
+  the `replace: true` semantics for list-view search param updates.
 
 ## User Data and Local Edits
 
@@ -108,7 +132,9 @@ Explicit rules, already enforced in the current code and in `CLAUDE.md`:
     id: number
     name: string
     email: string
+    phone: string
     address: { city: string }
+    company: { name: string }
   }
   ```
 - The API response is runtime-validated (`isUser` type guard in
@@ -191,33 +217,65 @@ Router is the sole navigation mechanism.
 
 ## UI / Accessibility
 
-Current, already-implemented expectations (Step 10):
-- Semantic HTML throughout: real `<button>`/`<a>` (via `Link`)/`<label>`/
-  `<dl>`, no clickable `<div>`s.
-- Every interactive element is keyboard-operable; nothing depends on a mouse.
-- Visible `:focus-visible` rings on every interactive element, including the
-  detail page's "Back to users" link and both Retry buttons.
-- Responsive layout: a fluid CSS grid for the list, a side gutter on `#root`,
-  no fixed widths that break small screens.
-- `overflow-wrap: break-word` (+ `min-width: 0` on the relevant flex/grid
-  containers) protects against long names/emails/cities overflowing —
-  relevant both for real long values and for the `?many=` dev dataset.
-- Distinct loading / error+retry / empty / success states everywhere data is
-  shown, never conflated.
-- Invalid form input gets a real visual marker (border change), not just
-  adjacent text.
-- No design-system abstraction was introduced — one small shared `.btn` class
-  consolidates genuinely duplicated button CSS; that's the extent of it.
+- The user list renders as a real shadcn `<Table>` (semantic `<table>`, not a
+  styled `<ul>`) — appropriate now that each row has multiple genuinely
+  tabular fields (name/email/phone/city/company). Each row is a mouse-clickable
+  `<TableRow>`, but the actual keyboard/screen-reader affordance is a real
+  `<Link>` in the name cell — the row click is a convenience layered on top,
+  never a replacement for it.
+- Radix UI (via shadcn's `Select`, used for the city filter and sort control)
+  provides its own keyboard interaction, focus management, and ARIA — not
+  reimplemented by this project.
+- Visible `:focus-visible` rings everywhere, via shadcn's shared `--ring`
+  token — buttons, inputs, and the select trigger all use the same ring.
+- Responsive: the table hides lower-priority columns (Company, then Phone) at
+  narrower breakpoints via Tailwind's `hidden`/`table-cell` utilities; Name and
+  City stay visible at every width. The table's own container scrolls
+  horizontally as a fallback rather than ever forcing the page to scroll.
+- **Fixed filters, scrollable content, paginated rows.** `RootLayout.tsx` is a
+  bounded `h-svh` shell (not `min-h-svh`) so the routed page gets exactly the
+  remaining viewport height, not more. `UserList.tsx` splits that height into:
+  heading/filters/count (`shrink-0`, never scrolls), the table
+  (`overflow-y-auto`, with its own `sticky` header row), and pagination
+  (`shrink-0`, always visible below the scroll region). This means the filter
+  toolbar and search box are never scrolled out of view even with hundreds of
+  rows (`?many=`) — only the row content scrolls. Pagination is 20 users per
+  page (`USERS_PAGE_SIZE`, `getTotalPages`/`paginateUsers` in
+  `deriveVisibleUsers.ts`), with the current page held in the URL (`?page=`)
+  via `useUsersListFilters`. Do not revert this to a `min-h-svh`/page-scrolls
+  layout without re-establishing an equivalent "controls always visible" story.
+- Distinct loading (shadcn `Skeleton`, respecting `prefers-reduced-motion` via
+  Tailwind's `motion-safe:` variant) / error+retry (shadcn `Alert` +
+  `Button`) / empty / success states everywhere data is shown, never
+  conflated. The "no matches" empty state has a "Clear search and filters"
+  recovery action.
+- Invalid form input gets a real visual marker (border/ring change via
+  `aria-invalid`), not just adjacent text; the validation message is styled
+  with the `destructive` (red) token, not color alone — the message text
+  itself already states the problem.
+- shadcn/ui is used as a component *foundation* here, not a design system: nine
+  primitives, each backing a real interaction, composed with Tailwind classes
+  specific to this app — no custom token/theming architecture beyond
+  `src/index.css`'s color variables.
+- Light/dark theme is a manual toggle (`ThemeToggle.tsx` + `lib/useTheme.ts`),
+  persisted to `localStorage` under `theme-preference`, applied via a
+  `data-theme` attribute on `<html>`. `index.css` defines light tokens on
+  `:root` and overrides them under `[data-theme='dark']`; an inline bootstrap
+  script in `index.html` sets the attribute before first paint to avoid a
+  flash of the wrong theme. `sonner`'s `Toaster` reads the same hook so toasts
+  match the active theme.
 
 ## Testing
 
 **Stack**: Vitest + jsdom (`vite.config.ts`'s `test: { environment: 'jsdom' }`
 block; `npm run test` → `vitest run`).
 
-**What is actually tested** (3 files, 29 tests):
+**What is actually tested** (3 files, 36 tests):
 - `deriveVisibleUsers.test.ts` — search by name/email (case-insensitive,
   trimmed), city filtering, ascending/descending sort, combined
-  search+filter+sort, no-mutation of the input array, `getAvailableCities`.
+  search+filter+sort, no-mutation of the input array, `getAvailableCities`,
+  and pagination (`getTotalPages`, `paginateUsers`: even/partial/out-of-range
+  pages).
 - `userNameEdits.test.ts` — save/read roundtrip, local-edit-wins-over-server,
   and malformed `localStorage` (invalid JSON, non-object, malformed
   individual entries, `setItem` throwing) never crashing the app.
@@ -280,8 +338,9 @@ commits that match their diffs — this repo's own history (`git log
 
 ## Things Future AI Assistants Must Never Do
 
-- Never move server state into Zustand.
-- Never add `selectedUserId` (or any navigational state) to Zustand.
+- Never reintroduce a client state library (Zustand, Redux, etc.) for view
+  state or navigational state — the URL/route already owns all of it.
+- Never add `selectedUserId` anywhere but the route path.
 - Never replace TanStack Router with React Router.
 - Never use the raw History API (`window.history`, `window.location`
   manipulation) for navigation.
@@ -300,28 +359,35 @@ commits that match their diffs — this repo's own history (`git log
 - Never add an abstraction (a component, a hook, a "design system" layer)
   just for the sake of having one — every abstraction in this codebase so far
   exists because a second real usage justified it.
+- Never replace shadcn/ui with another component library (MUI, Ant, Chakra,
+  etc.) — it's the approved, already-installed component foundation.
+- Never add a shadcn/ui primitive that isn't backing a real interaction
+  already present in this app, and never build a token/theming architecture
+  on top of it beyond what `src/index.css` already defines — that would cross
+  into "a design system," which the challenge explicitly excludes.
+- Never introduce a second styling approach (CSS-in-JS, a second utility
+  framework, per-component CSS files) alongside Tailwind — one styling system.
 
 ## Current Known Gaps
 
 These are real, current gaps — not invented ones:
-- **`README.md` has not been written yet.** It is still the generic Vite
-  template. The challenge requires it to document: the level being applied
-  for, how to run the project, all the decisions listed in `CLAUDE.md`
-  (conflict policy, styling choice, etc.), a "what's still wrong with this"
-  section, and a "what I'd need before building this for real" section. This
-  is a required, not-yet-done deliverable.
 - **No component-level or E2E test coverage** — see Testing above; this is a
   deliberate scope choice so far, not an oversight, but it means UI rendering
   logic itself (as opposed to the pure functions behind it) is unverified by
-  automated tests.
-- **Tailwind/shadcn are listed as approved in `CLAUDE.md` but are not
-  installed** — the actual styling implementation is plain CSS. Worth
-  reconciling in `CLAUDE.md` or the README so the two don't silently drift.
-- **The ambiguities named in `CLAUDE.md`'s "Known traps and ambiguities"
-  section have been resolved in code but not yet written up in the README** —
-  the decisions exist (e.g., search matches the effective/edited name, city
-  filter is exact-match via a dropdown), but the required README write-up
-  connecting decision-to-rationale hasn't happened yet.
+  automated tests. This includes the Tailwind/shadcn migration itself — the
+  new Table/Select/Alert markup was verified by `tsc`/`lint`/`build`/code
+  review, not by a live browser session or a component test.
+- **The production JS bundle grew substantially after adopting Tailwind +
+  shadcn/ui/Radix** (~371 KB → ~532 KB minified, per `pnpm build`) — Vite now
+  warns about a chunk over its 500 KB default threshold. No code-splitting
+  was added; reasonable for this challenge's scope, a real concern at
+  production scale (see README's "What Is Still Wrong With This").
+- **View state (search/city/sort) now survives a reload**, via URL search
+  params on `/users` (`validateSearch` in `src/router.ts`) — this was
+  previously a Zustand-only store with no persistence, named in the README as
+  an unresolved tension with "nothing a user has done should disappear." That
+  gap is closed; the README's "What Is Still Wrong With This" section was
+  updated accordingly.
 
 ## How to Use This Context
 
@@ -330,8 +396,8 @@ Future AI sessions working on this repository should:
 1. Read `CLAUDE.md` first — the project's standing rules and conventions.
 2. Read `AI/context.md` (this file) next — the current, concrete state of the
    implementation.
-3. Inspect the current code before making changes — this file describes the
-   state as of Step 12; it will drift, so verify against the actual files
+3. Inspect the current code before making changes — this file will drift as
+   the project evolves, so verify against the actual files (and `git log`)
    rather than trusting this document blindly for anything load-bearing.
 4. Check `git status` before modifying anything, to see what's already
    in-progress versus committed.

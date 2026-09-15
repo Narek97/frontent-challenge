@@ -1,5 +1,8 @@
 import type { User } from '../../../types/user'
-import { ALL_CITIES, type SortDirection } from '../store/useUsersViewStore'
+
+export type SortDirection = 'asc' | 'desc'
+
+export const ALL_CITIES = 'all'
 
 interface VisibleUsersParams {
   search: string
@@ -32,4 +35,19 @@ export function selectVisibleUsers(users: User[], params: VisibleUsersParams): U
 export function getAvailableCities(users: User[]): string[] {
   const cities = new Set(users.map((user) => user.address.city))
   return [...cities].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+}
+
+export const USERS_PAGE_SIZE = 20
+
+export function getTotalPages(itemCount: number, pageSize: number = USERS_PAGE_SIZE): number {
+  return Math.max(1, Math.ceil(itemCount / pageSize))
+}
+
+export function paginateUsers(
+  users: User[],
+  page: number,
+  pageSize: number = USERS_PAGE_SIZE,
+): User[] {
+  const start = (page - 1) * pageSize
+  return users.slice(start, start + pageSize)
 }
